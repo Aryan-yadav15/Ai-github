@@ -11,9 +11,16 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { Bot, CreditCard, LayoutDashboard, Plus, Presentation } from "lucide-react";
+import {
+  Bot,
+  CreditCard,
+  LayoutDashboard,
+  Plus,
+  Presentation,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -54,6 +61,7 @@ const items = [
 
 export function AppSidebar() {
   const pathName = usePathname();
+  const open = useSidebar();
   return (
     <Sidebar collapsible="icon" variant="floating">
       <SidebarHeader>Logo</SidebarHeader>
@@ -116,14 +124,16 @@ export function AppSidebar() {
                   );
                 })}
                 <div className="h-2"></div>
-                <SidebarMenuItem>
-                  <Link href="/create">
-                    <Button size={'sm'} variant={"outline"} className="w-fit">
-                      <Plus size={16} />
-                      Create Project
-                    </Button>
-                  </Link>
-                </SidebarMenuItem>
+                {open && (
+                  <SidebarMenuItem>
+                    <Link href="/create">
+                      <Button size={"sm"} variant={"outline"} className="w-fit">
+                        <Plus size={16} />
+                        Create Project
+                      </Button>
+                    </Link>
+                  </SidebarMenuItem>
+                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
