@@ -13,6 +13,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import useProject from "@/hooks/use-project";
 import { cn } from "@/lib/utils";
 import {
   Bot,
@@ -24,17 +25,6 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const projects = [
-  {
-    name: "Project 1",
-  },
-  {
-    name: "Project 2",
-  },
-  {
-    name: "Project 3",
-  },
-];
 
 const items = [
   {
@@ -62,6 +52,8 @@ const items = [
 export function AppSidebar() {
   const pathName = usePathname();
   const open = useSidebar();
+  const {projects,projectId,setProjectId} = useProject()
+
   return (
     <Sidebar collapsible="icon" variant="floating">
       <SidebarHeader>Logo</SidebarHeader>
@@ -101,17 +93,17 @@ export function AppSidebar() {
             <SidebarGroupLabel>Projects</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {projects.map((project) => {
+                {projects?.map((project) => {
                   return (
                     <SidebarMenuItem key={project.name}>
                       <SidebarMenuButton asChild>
-                        <div>
+                        <div onClick={()=>{setProjectId(project.id)}}>
                           <div
                             className={cn(
                               "flex size-6 items-center justify-center rounded-sm border bg-white text-sm text-primary",
                               {
-                                "bg-primary text-white": true,
-                                "hover:bg-gray-20 text-gray-700": false,
+                                "bg-primary text-white":  project.id === projectId
+                                // "hover:bg-gray-20 text-gray-700": false,
                               },
                             )}
                           >
