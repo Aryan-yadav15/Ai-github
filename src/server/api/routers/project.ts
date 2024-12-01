@@ -1,6 +1,7 @@
 // Importing necessary libraries and functions
 import { z } from "zod"; // zod is a validation library
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc"; // Importing TRPC router utilities
+import { pollCommits } from "@/lib/github";
 
 // Creating a router for project-related operations
 export const projectRouter = createTRPCRouter({
@@ -27,7 +28,7 @@ export const projectRouter = createTRPCRouter({
           },
         },
       });
-
+      await pollCommits(project.id);
       // Returning the created project
       return project;
     }),
@@ -46,4 +47,17 @@ export const projectRouter = createTRPCRouter({
       },
     });
   }),
+  getCommits: protectedProcedure
+    .input(
+      z.object({
+        projectId: z.string(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      return await ctx.db.commit.findMany({
+        where: {
+          projectId: input.projectId,
+        },
+      });
+    }),
 });

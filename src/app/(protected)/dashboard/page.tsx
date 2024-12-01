@@ -1,36 +1,19 @@
 "use client";
 import useProject from "@/hooks/use-project";
-import { getCommitHashes } from "@/lib/github";
+import { filterUnProcessedCommits, getCommitHashes } from "@/lib/github";
 import { ExternalLink, Github } from "lucide-react";
 import Link from "next/link";
 import React from "react";
 import { useEffect } from "react";
+import CommitLog from "./commit-log";
 type Props = {};
 
 const Dashboard = () => {
   const { project } = useProject();
-
-  //use effect to set the project id
-  {
-    /*
-   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const commitHashes = await getCommitHashes(
-          "https://github.com/docker/genai-stack",
-        );
-        console.log(commitHashes);
-      } catch (error) {
-        console.error("Error fetching commit hashes:", error);
-      }
-    };
-    fetchData();
-  }, []);
-  */
-  }
-
+  
   return (
     <div>
+      {project?.id}
       <div className="flex flex-wrap items-center justify-between gap-y-4">
         {/** Githiub LInk */}
         <div className="flex w-fit flex-row items-center rounded-md bg-orange-700 px-4 py-3">
@@ -62,7 +45,7 @@ const Dashboard = () => {
         </div>
       </div>
       <div className="mt-8"></div>
-      CommitLog
+      <CommitLog />
     </div>
   );
 };
