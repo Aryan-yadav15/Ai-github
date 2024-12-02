@@ -1,7 +1,8 @@
 // Importing necessary libraries and functions
-import { z } from "zod"; // zod is a validation library
-import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc"; // Importing TRPC router utilities
-import { pollCommits } from "@/lib/github";
+import { z } from "zod" // zod is a validation library
+import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc" // Importing TRPC router utilities
+import { pollCommits } from "@/lib/github"
+import { indexGithubRerpo } from "@/lib/github-loader"
 
 // Creating a router for project-related operations
 export const projectRouter = createTRPCRouter({
@@ -27,10 +28,11 @@ export const projectRouter = createTRPCRouter({
             },
           },
         },
-      });
-      await pollCommits(project.id);
+      })
+      await indexGithubRerpo(project.id, input.githubUrl, input.githubToken) // Indexing the GitHub repository
+      await pollCommits(project.id)
       // Returning the created project
-      return project;
+      return project
     }),
 
   // Protected procedure to get all projects for the authenticated user
@@ -45,7 +47,7 @@ export const projectRouter = createTRPCRouter({
         },
         deletedAt: null, // Ensuring that only non-deleted projects are returned
       },
-    });
+    })
   }),
   getCommits: protectedProcedure
     .input(
@@ -54,10 +56,11 @@ export const projectRouter = createTRPCRouter({
       }),
     )
     .query(async ({ ctx, input }) => {
+      pollCommits(input.projectId).then().catch(console.error)
       return await ctx.db.commit.findMany({
         where: {
           projectId: input.projectId,
         },
-      });
+      })
     }),
-});
+})

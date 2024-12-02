@@ -17,6 +17,59 @@ type Response = {
   commitDate: string;
 };
 
+
+
+export const pollCommits = async (projectId: string) => {
+  const { project, githubUrl } = await fetchProjectGithubUrl(projectId);
+  console.log("Project Details:", project, "GitHub URL:", githubUrl);
+
+  const commitHashes = await getCommitHashes(githubUrl);
+
+  // Filter out already processed commits
+  const unProcessedCommits = await filterUnProcessedCommits(projectId, commitHashes);
+  console.log("Unprocessed Commits:", unProcessedCommits);
+
+  // Generate summaries for unprocessed commits
+  const summaryResponses = await Promise.allSettled(
+    unProcessedCommits.map((commit) => summarizeCommit(githubUrl, commit.commitHash)),
+  );
+
+  // Extract summaries and log errors for failed promises
+  const summaries = summaryResponses.map((response, index) => {
+    if (response.status === "fulfilled") {
+      return response.value as string;
+    }
+    console.error("Error summarizing commit:", unProcessedCommits[index], response.reason);
+    return "";
+  });
+
+  console.log("Summaries Generated:", summaries.length);
+
+  // Add commits to the database
+  const commits = await db.commit.createMany({
+    data: summaries
+      .filter((summary) => summary) // Exclude empty summaries
+      .map((summary, index) => {
+        console.log("Processing Commit:", unProcessedCommits[index]);
+        return {
+          projectId,
+          commitHash: unProcessedCommits[index]!.commitHash,
+          commitMessage: unProcessedCommits[index]!.commitMessage,
+          commitAuthorName: unProcessedCommits[index]!.commitAuthorName,
+          commitAuthorAvatar: unProcessedCommits[index]!.commitAuthorAvatar,
+          commitDate: unProcessedCommits[index]!.commitDate,
+          summary,
+        };
+      }),
+  });
+
+  console.log("Commits Saved to Database:", commits);
+  return commits;
+};
+
+
+
+
 export const getCommitHashes = async (githubUrl: string): Promise<Response[]> => {
   const [owner, repo] = githubUrl.split("/").slice(-2);
   if (!owner || !repo) {
@@ -42,54 +95,9 @@ export const getCommitHashes = async (githubUrl: string): Promise<Response[]> =>
   }));
 };
 
-export const pollCommits = async (projectId: string) => {
-  const { project, githubUrl } = await fetchProjectGithubUrl(projectId);
-  console.log("Project Details:", project, "GitHub URL:", githubUrl);
 
-  const commitHashes = await getCommitHashes(githubUrl);
-  console.log("Fetched Commits:", commitHashes);
 
-  // Filter out already processed commits
-  const unProcessedCommits = await filterUnProcessedCommits(projectId, commitHashes);
-  console.log("Unprocessed Commits:", unProcessedCommits);
 
-  // Generate summaries for unprocessed commits
-  const summaryResponses = await Promise.allSettled(
-    unProcessedCommits.map((commit) => summarizeCommit(githubUrl, commit.commitHash)),
-  );
-
-  // Extract summaries and log errors for failed promises
-  const summaries = summaryResponses.map((response, index) => {
-    if (response.status === "fulfilled") {
-      return response.value as string;
-    }
-    console.error("Error summarizing commit:", unProcessedCommits[index], response.reason);
-    return "";
-  });
-
-  console.log("Summaries Generated:", summaries);
-
-  // Add commits to the database
-  const commits = await db.commit.createMany({
-    data: summaries
-      .filter((summary) => summary) // Exclude empty summaries
-      .map((summary, index) => {
-        console.log("Processing Commit:", unProcessedCommits[index]);
-        return {
-          projectId,
-          commitHash: unProcessedCommits[index]!.commitHash,
-          commitMessage: unProcessedCommits[index]!.commitMessage,
-          commitAuthorName: unProcessedCommits[index]!.commitAuthorName,
-          commitAuthorAvatar: unProcessedCommits[index]!.commitAuthorAvatar,
-          commitDate: unProcessedCommits[index]!.commitDate,
-          summary,
-        };
-      }),
-  });
-
-  console.log("Commits Saved to Database:", commits);
-  return commits;
-};
 
 async function fetchProjectGithubUrl(projectId: string) {
   const project = await db.project.findUnique({
@@ -103,6 +111,9 @@ async function fetchProjectGithubUrl(projectId: string) {
 
   return { project, githubUrl: project.githubUrl };
 }
+
+
+
 
 export async function filterUnProcessedCommits(
   projectId: string,
@@ -122,6 +133,8 @@ export async function filterUnProcessedCommits(
   console.log("Processed Commits Hashes:", processedHashes);
   return unProcessedCommits;
 }
+
+
 
 async function summarizeCommit(githubUrl: string, commitHash: string) {
   try {
