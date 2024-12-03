@@ -49,7 +49,7 @@ export const loadGithubRepository = async (
   githubToken?: string,
 ) => {
   const loader = new GithubRepoLoader(githubUrl, {
-    accessToken: githubToken || "",
+    accessToken: githubToken || process.env.GITHUB_TOKEN,
     branch: "main",
     ignoreFiles: [
       "README.md",
