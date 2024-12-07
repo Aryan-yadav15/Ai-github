@@ -2,7 +2,7 @@
 import { z } from "zod" // zod is a validation library
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc" // Importing TRPC router utilities
 import { pollCommits } from "@/lib/github"
-import { indexGithubRerpo } from "@/lib/github-loader"
+import { indexGithubRrpo } from "@/lib/github-loader"
 
 // Creating a router for project-related operations
 export const projectRouter = createTRPCRouter({
@@ -30,7 +30,7 @@ export const projectRouter = createTRPCRouter({
         },
       })
       await pollCommits(project.id)
-      await indexGithubRerpo(project.id, input.githubUrl, input.githubToken) // Indexing the GitHub repository
+      await indexGithubRrpo(project.id, input.githubUrl, input.githubToken) // Indexing the GitHub repository
       // Returning the created project
       return project
     }),

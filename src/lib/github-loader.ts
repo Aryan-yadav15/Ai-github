@@ -44,6 +44,8 @@ import { db } from "@/server/db"
  * // 3. Perform semantic search on query
  */
 
+
+
 export const loadGithubRepository = async (
   githubUrl: string,
   githubToken?: string,
@@ -55,30 +57,28 @@ export const loadGithubRepository = async (
       "README.md",
       "package-lock.json",
       "yarn.lock",
-      "yarn.lock",
       "pnpm-lock.yaml",
     ],
     recursive: true,
-    //by setting recursive to true we can look for the files in the subdirectories as well
     unknown: "warn",
     maxConcurrency: 5,
-  })
-  const docs = await loader.load()
-  return docs
-}
+  });
+  const docs = await loader.load();
+  return docs;
+};
 
-export const indexGithubRerpo = async (
+export const indexGithubRrpo = async (
   projectId: string,
   githubUrl: string,
   githubToken?: string,
 ) => {
-  const docs = await loadGithubRepository(githubUrl, githubToken)
+  const docs = await loadGithubRepository(githubUrl, githubToken);
   // Generate embeddings for each document
-  const allEmbeddings = await generateEmbeddings(docs)
+  const allEmbeddings = await generateEmbeddings(docs);
   await Promise.allSettled(
     allEmbeddings.map(async (embedding, index) => {
-      console.log(`Processing ${index} of ${allEmbeddings.length}`)
-      if (!embedding) return
+      console.log(`Processing ${index} of ${allEmbeddings.length}`);
+      if (!embedding) return;
 
       const sourceCodeEmbedding = await db.sourceCodeEmbedding.create({
         data: {
@@ -87,29 +87,38 @@ export const indexGithubRerpo = async (
           fileName: embedding.fileName,
           projectId,
         },
-      })
+      });
 
-      //we raw dog this bitch to the sql database 
+      // Update the summary embedding in the database
       await db.$executeRaw`
       UPDATE "SourceCodeEmbedding"
       SET "summaryEmbedding" = ${embedding.embedding}::vector
       WHERE "id" = ${sourceCodeEmbedding.id}
-      `
+      `;
     }),
-  )
-}
+  );
+};
 
 const generateEmbeddings = async (docs: Document[]) => {
   return await Promise.all(
     docs.map(async (doc) => {
-      const summary = await summariseCode(doc)
-      const embedding = await generateEmbedding(summary)
-      return {
-        summary,
-        embedding,
-        sourceCode: JSON.parse(JSON.stringify(doc.pageContent)),
-        fileName: doc.metadata.source,
+      try {
+        const summary = await summariseCode(doc);
+        if (!summary) {
+          console.warn(`Summary not generated for file: ${doc.metadata.source}`);
+          return null;
+        }
+        const embedding = await generateEmbedding(summary);
+        return {
+          summary,
+          embedding,
+          sourceCode: JSON.parse(JSON.stringify(doc.pageContent)),
+          fileName: doc.metadata.source,
+        };
+      } catch (error) {
+        console.error(`Error generating summary for file: ${doc.metadata.source}`, error);
+        return null;
       }
     }),
-  )
-}
+  ).then(results => results.filter(result => result !== null));
+};

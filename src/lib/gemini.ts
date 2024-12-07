@@ -3,80 +3,120 @@ import { Document } from "@langchain/core/documents";
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY!);
 const model = genAI.getGenerativeModel({
-  model: "gemini-1.5-flash",
+  model: "gemini-1.5-flash-8b",
+});
+const embeddingModel = genAI.getGenerativeModel({
+  model: "text-embedding-004",
 });
 
-//htttps://github.com/docker/genai-stack/commit/<commitHash>.diff
-//diff the changes in a commit we can find it by going to  the github URL and appending /commit/commitHash and it will show the changes made in that commit
-export const aiSummariseCommit = async (diff: string) => {
-  const response = await model.generateContent([
-    `You are an expert programmer, and you are trying to summarize a git diff. Reminders about the git diff format:
-        
-        For every file, there are a few metadata lines, like (for example):
-        \`\`\`
-        diff --git a/lib/index.js b/lib/index.js
-        index aadf691..bfef603 100644
-        --- a/lib/index.js
-        +++ b/lib/index.js
-        \`\`\`
-        This means that \`lib/index.js\` was modified in this commit. Note that this is only an example.  
-        Then there is a specifier of the lines that were modified.  
-        A line starting with \`+\` means it was added.  
-        A line starting with \`-\` means that line was deleted.  
-        A line that starts with neither \`+\` nor \`-\` is code given for context and better understanding. 
-        It is not part of the diff.
-        [...]
-        EXAMPLE SUMMARY COMMENTS:
-        \`\`\`
-        * Raised the amount of returned recordings from \`10\` to \`100\` [packages/server/recordings_api.ts],[packages/server/constats.ts].
-        * Fixed a typo in the GitHub action name [.github/workflows/gpt-commit-summarizer.yml].
-        * Moved the \`octokit\` initialization to a separate file [src/octokit.ts], [src/index.ts].
-        * Added an OpenAI API for completions [packages/utils/apis/openai.ts].
-        * Lowered numeric tolerance for test files.
-        \`\`\`
-        
-        Most commits will have less comments than this example's list.  
-        The last comment does not include the file names, because there were more than two relevant files in the hypothetical commit.  
-        Do not include parts of the example in your summary.  
-        It is given only as an example of appropriate comments.`,
-    `Please summarize the following diff file:\n\n${diff}`,
-  ]);
-  console.log(response);
-  return response.response.text();
-};
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-{
-  /*
-    console.await(summariseCommit(`
-    */
-}
-
-export async function summariseCode(doc: Document) {
-  console.log("getting summary for", doc.metadata.source);
-
+export const aiSummariseCommit = async (diff: string): Promise<string> => {
   try {
-    const code = doc.pageContent.slice(0, 10000); // Limit to 10000 characters
     const response = await model.generateContent([
-      `You are an intelligent senior software engineer who specializes in onboarding junior software engineers onto projects,
-    You are onboarding a junior software engineer and explaining to them the purpose of the ${doc.metadata.source} file,
-    Here is the code:
-    ---
-    ${code}
-    ---
-    Give me summary of no more than 100 words of the purpose of the ${doc.metadata.source} file
-`,
+      `You are an expert programmer, and you are trying to summarize a git diff. Reminders about the git diff format:
+
+      For every file, there are a few metadata lines, like (for example):
+      \`\`\`
+      diff --git a/lib/index.js b/lib/index.js
+      index aadf691..bfef603 100644
+      --- a/lib/index.js
+      +++ b/lib/index.js
+      @@ -1,6 +1,6 @@
+      -console.log('Hello, world!');
+      +console.log('Hello, universe!');
+      \`\`\`
+
+      Please summarize the following diff file:\n\n${diff}`,
     ]);
     return response.response.text();
   } catch (error) {
-    return ""
+    if ((error as any).response?.status === 429) {
+      console.warn("Rate limit exceeded, retrying after delay...");
+      await delay(1000); // Delay for 1 second before retrying
+      return aiSummariseCommit(diff);
+    }
+    throw error;
   }
-}
+};
 
-export async function generateEmbedding(summary: string) {
-  const model = genAI.getGenerativeModel({
-    model: "text-embedding-004",
+
+
+// Shared promise chain to ensure sequential execution
+let queuePromise: Promise<void> = Promise.resolve();
+
+export const summariseCode = async (doc: Document): Promise<string> => {
+  console.log("Getting summary for", doc.metadata.source);
+
+  // Wrap the task in a function to execute it sequentially
+  return new Promise<string>((resolve, reject) => {
+    const task = async () => {
+      try {
+        const code = doc.pageContent.slice(0, 10000); // Limit to 10000 characters
+
+        const response = await model.generateContent([
+          `You are an intelligent senior software engineer who specializes in onboarding junior software engineers onto projects,
+          You are onboarding a junior software engineer and explaining to them the purpose of the ${doc.metadata.source} file,
+          Here is the code:
+          ---
+          ${code}
+          ---
+          Give me summary of no more than 100 words of the purpose of the ${doc.metadata.source} file
+          `,
+        ]);
+
+        resolve(response.response.text());
+      } catch (error) {
+        if ((error as any).response?.status === 429) {
+          console.warn("Rate limit exceeded, retrying after delay...");
+          await delay(1000); // Delay for 1 second before retrying
+          return task(); // Retry the same task
+        } else {
+          console.error(`Error generating summary for file: ${doc.metadata.source}`, error);
+          reject(error); // Reject with the error
+        }
+      }
+    };
+
+    // Chain the task to the shared promise chain
+    queuePromise = queuePromise.then(task).catch(() => {
+      // Catch to prevent breaking the chain
+    });
   });
-  const result = await model.embedContent(summary);
+};
+
+
+
+
+export const generateEmbedding = async (summary: string) => {
+  const result = await embeddingModel.embedContent(summary);
   const embedding = result.embedding;
   return embedding.values;
-}
+};
+
+const generateEmbeddings = async (docs: Document[]): Promise<{ summary: string; embedding: number[]; sourceCode: string; fileName: string }[]> => {
+  const delayBetweenRequests = 1000; // 1 second delay between requests
+  const results = [];
+
+  for (const doc of docs) {
+    await delay(delayBetweenRequests); // Delay before each request
+    try {
+      const summary = await summariseCode(doc);
+      if (!summary) {
+        console.warn(`Summary not generated for file: ${doc.metadata.source}`);
+        continue;
+      }
+      const embedding = await generateEmbedding(summary);
+      results.push({
+        summary,
+        embedding,
+        sourceCode: JSON.parse(JSON.stringify(doc.pageContent)),
+        fileName: doc.metadata.source,
+      });
+    } catch (error) {
+      console.error(`Error generating summary for file: ${doc.metadata.source}`, error);
+    }
+  }
+
+  return results;
+};
