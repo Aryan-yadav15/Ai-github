@@ -9,7 +9,7 @@ const embeddingModel = genAI.getGenerativeModel({
   model: "text-embedding-004",
 });
 
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export const aiSummariseCommit = async (diff: string): Promise<string> => {
   try {
@@ -40,20 +40,28 @@ export const aiSummariseCommit = async (diff: string): Promise<string> => {
   }
 };
 
-
-
 // Shared promise chain to ensure sequential execution
+
+
 let queuePromise: Promise<void> = Promise.resolve();
+const requestQueue: (() => Promise<void>)[] = [];
+const minDelayBetweenRequests = 3000; // 3 seconds minimum between requests
+let lastRequestTime = 0;
 
 export const summariseCode = async (doc: Document): Promise<string> => {
-  console.log("Getting summary for", doc.metadata.source);
-
-  // Wrap the task in a function to execute it sequentially
   return new Promise<string>((resolve, reject) => {
     const task = async () => {
       try {
-        const code = doc.pageContent.slice(0, 10000); // Limit to 10000 characters
+        // Ensure minimum delay between requests
+        const now = Date.now();
+        const timeSinceLastRequest = now - lastRequestTime;
+        if (timeSinceLastRequest < minDelayBetweenRequests) {
+          await new Promise(r => setTimeout(r, minDelayBetweenRequests - timeSinceLastRequest));
+        }
 
+        const code = doc.pageContent;
+        lastRequestTime = Date.now();
+        
         const response = await model.generateContent([
           `You are an intelligent senior software engineer who specializes in onboarding junior software engineers onto projects,
           You are onboarding a junior software engineer and explaining to them the purpose of the ${doc.metadata.source} file,
@@ -67,26 +75,13 @@ export const summariseCode = async (doc: Document): Promise<string> => {
 
         resolve(response.response.text());
       } catch (error) {
-        if ((error as any).response?.status === 429) {
-          console.warn("Rate limit exceeded, retrying after delay...");
-          await delay(1000); // Delay for 1 second before retrying
-          return task(); // Retry the same task
-        } else {
-          console.error(`Error generating summary for file: ${doc.metadata.source}`, error);
-          reject(error); // Reject with the error
-        }
+        reject(error);
       }
     };
 
-    // Chain the task to the shared promise chain
-    queuePromise = queuePromise.then(task).catch(() => {
-      // Catch to prevent breaking the chain
-    });
+    queuePromise = queuePromise.then(task).catch(() => {});
   });
 };
-
-
-
 
 export const generateEmbedding = async (summary: string) => {
   const result = await embeddingModel.embedContent(summary);
@@ -94,7 +89,16 @@ export const generateEmbedding = async (summary: string) => {
   return embedding.values;
 };
 
-const generateEmbeddings = async (docs: Document[]): Promise<{ summary: string; embedding: number[]; sourceCode: string; fileName: string }[]> => {
+const generateEmbeddings = async (
+  docs: Document[],
+): Promise<
+  {
+    summary: string;
+    embedding: number[];
+    sourceCode: string;
+    fileName: string;
+  }[]
+> => {
   const delayBetweenRequests = 1000; // 1 second delay between requests
   const results = [];
 
@@ -114,7 +118,10 @@ const generateEmbeddings = async (docs: Document[]): Promise<{ summary: string; 
         fileName: doc.metadata.source,
       });
     } catch (error) {
-      console.error(`Error generating summary for file: ${doc.metadata.source}`, error);
+      console.error(
+        `Error generating summary for file: ${doc.metadata.source}`,
+        error,
+      );
     }
   }
 
